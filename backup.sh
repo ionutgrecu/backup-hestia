@@ -2,6 +2,20 @@
 
 cd "$(dirname "$0")"
 
+LOCKFILE="/tmp/backup-hestia.lock"
+acquire_lock() {
+    if [ -e "$LOCKFILE" ]; then
+        echo "Script is already running. Exiting."
+        exit 1
+    fi
+    touch "$LOCKFILE"
+}
+release_lock() {
+    rm -f "$LOCKFILE"
+}
+trap release_lock EXIT
+acquire_lock
+
 set -o allexport
 source .env
 set +o allexport
