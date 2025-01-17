@@ -41,15 +41,20 @@ for host in "${hosts[@]}"; do
     for user in $USERS; do
         echo "Backing up $user"
 
-        output=""
+        log_file=$(mktemp)
 
         $SSH_COMMAND "sudo /usr/local/hestia/bin/v-backup-user $user"
         $SSH_COMMAND "sudo chown admin:backup /backup/$user*.tar"
 
-        output+=$(rsync -av -P --info=progress2 --size-only -e "ssh -p $SOURCE_PORT  -o StrictHostKeyChecking=no" --remove-source-files "$SOURCE_HOST_NAME:/backup/$user*.tar" "$TMP_PATH/" 2>&1 | tee /dev/tty)
+        rsync -av -P --info=progress2 --size-only -e "ssh -p $SOURCE_PORT  -o StrictHostKeyChecking=no" "$SOURCE_HOST_NAME:/backup/$user*.tar" "$TMP_PATH/" 2>&1 | tee /dev/tty > "$log_file"
         7za a -t7z -mhe=on -mx=0 -p"$ENCRYPTION_PASSWORD" $TMP_PATH/"$user"_"$DATE".7z "$TMP_PATH/$user*.tar" 2>&1
+        $SSH_COMMAND "sudo rm /backup/$user*.tar" 2>&1 | tee /dev/tty > "$log_file"
         rm -rf $TMP_PATH/"$user"*.tar
-        output+=$(rclone move --transfers $UPLOAD_THREADS --size-only --ignore-checksum --no-check-certificate --progress --stats-unit bytes "$TMP_PATH" --include "/$user*.7z" "$DESTINATION/" 2>&1 | tee /dev/tty)
+        
+        rclone move --transfers $UPLOAD_THREADS --size-only --ignore-checksum --no-check-certificate --progress --stats-unit bytes "$TMP_PATH" --include "/$user*.7z" "$DESTINATION/" 2>&1 | tee -a "$log_file" > /dev/tty
+        
+        output=$(tail -n 10 "$log_file")
+        rm "$log_file"
 
         formatted_output=$(echo "$output" | sed ':a;N;$!ba;s/\n/<br>/g')
         all_outputs+="${formatted_output}<br><br>"
